@@ -1,0 +1,30 @@
+---
+
+# =====================================================
+# SECTION: CONFIRM PSRP VARS
+# =====================================================
+
+# Add node to inventory
+- name: Setup Inventory and Groups
+  ansible.builtin.add_host:
+    fqdn: "{{ item.1.node | lower() }}"
+    hostname: "{{ item.1.node | regex_search('^([a-zA-Z0-9-]+)') | lower }}"
+    ipaddress: "{{ item.1.ipaddress }}"
+    os_family: "{{ item.0.key | lower }}"
+    domain: '{{ item.1.node | regex_search("\.(\w+)\.", "\1") | first | lower }}'
+    domain_fqdn: '{{ item.1.node | regex_search("\w+\.(.*)", "\1") | first | lower }}'
+    assert_type: '{{ (awx_job_template_name | default(tower_job_template_name) | regex_search("^(?:[a-zA-Z]*)_(?:[a-zA-Z]*)_(?:[a-zA-Z]*)_(\w*)$", "\1") | first) | lower }}'
+    ansible_psrp_host: "{{ item.1.ipaddress | default(item.1.node) | lower }}"
+    ansible_psrp_cert_validation: ignore
+    ansible_psrp_reconnection_retries: 5
+    ansible_psrp_auth: ntlm
+    inventory_dir: "{{ inventory_dir }}"
+    ansible_shell_type: "{{ (item.0.key|lower == 'windows') | ternary('powershell', 'sh') }}"
+    ansible_connection: psrp
+    ansible_port: 5986
+    groups:
+      - "{{ item.0.key }}"
+      - "dynamic_list"
+  loop: "{{ lookup('dict', device_list, wantlist=True) | subelements('value') }}"
+  loop_control:
+    label: "Add Node: {{ item.1.node }}"

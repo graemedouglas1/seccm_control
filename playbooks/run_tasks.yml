@@ -1,0 +1,99 @@
+---
+
+# =====================================================
+# CONFIGURE IN MEMORY INVENTORY ON ANSIBLE TOWER
+# =====================================================
+
+- name: Setup Dynamic Inventory
+  hosts: localhost
+  gather_facts: true
+  tasks:
+
+    # =====================================================
+    # SECTION: CONFIGURE INVENTORY
+    # =====================================================
+
+    - name: Configure Dynamic Inventory
+      ansible.builtin.include_tasks: "support_tasks/setup_connection.yml"
+      when: inventory_target is not defined
+
+# =====================================================
+# EXECUTE ROLE CONFIGURATION
+# =====================================================
+
+- name: Execute Role Configuration Tasks
+  hosts: "{{ inventory_target is defined | ternary(inventory_target, 'dynamic_list') }}"
+  any_errors_fatal: true
+  gather_facts: true
+  gather_subset: ["distribution", "!all", "!min"]
+  tasks:
+
+    # =====================================================
+    # SECTION: GATHER FACTS & STORE IN FACT FILE
+    # =====================================================
+
+    - name: Create /tmp directory
+      ansible.builtin.file:
+        path: '/tmp'
+        state: directory
+        mode: '1777'
+      delegate_to: "localhost"
+
+    - name: Copy Facts to /tmp
+      ansible.builtin.copy:
+        dest: "/tmp/{{ inventory_hostname }}_facts.yml"
+        content: "{{ ansible_facts | to_yaml }}"
+        mode: '644'
+      delegate_to: "localhost"
+
+    # =====================================================
+    # SECTION: SET LOG VISIBILITY
+    # =====================================================
+
+    - name: Set Log Visibility
+      ansible.builtin.set_fact:
+        hide_logs: "{{ 'False' if (ansible_verbosity > 0) else 'True' }}"
+
+    # =====================================================
+    # SECTION: RUN ROLE CONFIGURATION TASKS
+    # =====================================================
+
+    - name: Include Tasks Block
+      block:
+
+        # =====================================================
+        # SECTION: RUN INVENTORY ASSERTIONS
+        # =====================================================
+
+        - name: Run Inventory Assertions
+          ansible.builtin.assert:
+            that: "{{ item.value.checks }}"
+            fail_msg: 'Parameter value not in expected state'
+            success_msg: 'Parameter value defined as expected'
+            quiet: true
+          loop: "{{ assert_checks | dict2items | selectattr('value.type', 'defined') | selectattr('value.type', 'search', 'inventory') | list }}"
+          loop_control:
+            label: "Checking Parameter: {{ item.key }}"
+          when: inventory_hostname != 'localhost'
+
+        # =====================================================
+        # SECTION: GATHER VAULT DATA
+        # =====================================================
+
+        - name: Gathering Vault Credentials
+          ansible.builtin.include_tasks: "support_tasks/query_vault.yml"
+
+        # =====================================================
+        # SECTION: EXECUTE ROLE CONFIGURATION
+        # =====================================================
+
+        - name: Include Required Tasks
+          ansible.builtin.include_role:
+            name: gcs_scm_role
+            tasks_from: main
+
+      rescue:
+
+        - name: Fail
+          ansible.builtin.fail:
+            msg: This system has failed to execute role configuration tasks. Please check Logs for Info.

@@ -1,0 +1,25 @@
+---
+
+##############################################################
+# Section 1: GCS SecCM Modules
+##############################################################
+
+roles:
+
+  - src: git+git@bitbucket.org:togher1992/gcs_scm_benchmarks.git
+    version: main
+
+  - src: git+git@bitbucket.org:togher1992/gcs_scm_data.git
+    version: main
+
+  - src: git+git@bitbucket.org:togher1992/gcs_scm_inspec.git
+    version: main
+
+  - src: git+git@bitbucket.org:togher1992/gcs_scm_jenkins.git
+    version: main
+
+  - src: git+git@bitbucket.org:togher1992/gcs_scm_role.git
+    version: main
+
+  - src: git+git@bitbucket.org:togher1992/gcs_scm_utils.git
+    version: main

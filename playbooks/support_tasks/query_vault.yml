@@ -1,0 +1,14 @@
+---
+
+# =====================================================
+# GATHER VAULT DATA
+# =====================================================
+
+- name: "Gathering Vault Credentials"
+  ansible.builtin.set_fact:
+    "{{ item.name }}": "{{ lookup('vault_lookup', 'path={{ item.path }}, vault_key={{ item.key }}') | sensitive }}"
+  when:
+    - credentials is defined
+  loop: "{{ credentials | list }}"
+  loop_control:
+    label: "Storing Credential : {{ item.name }}"

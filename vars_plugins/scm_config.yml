@@ -1,0 +1,9 @@
+---
+
+plugin_options:
+  data_modules:
+    - gcs_scm_data
+    - gcs_scm_benchmarks
+  merge:
+    hash_behavior: merge
+    list_behavior: append

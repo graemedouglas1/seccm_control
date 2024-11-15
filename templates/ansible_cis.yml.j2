@@ -1,0 +1,57 @@
+---
+
+inspec_rules:
+
+{%- for task in tasks +%}
+  "{{ task.number }}":
+    title: '{{ task.number }} | {{ task.name }}'
+    section: '{{ task.cis_section }}'
+    description: |
+        {{ task.description | wordwrap(120, false) | indent(8) }}
+    remediation: |
+        {{ task.remediation_advice | wordwrap(120, false) | indent(8) }}
+    type: {{ task.check_type }}
+    impact: '{{ task.impact }}'
+    tags: [{% for tag in task.tags -%}'{{ tag }}'{{ ',' if not loop.last }}{%- endfor +%}]
+    enabled: {{ task.enabled }}
+    properties:
+      match: all
+      rules: 
+          {%- if task.complex_checks != [] and task.registry_checks is not defined and task.user_rights is not defined and task.account_status is not defined and task.wmi_checks is not defined +%}
+        - checks:
+          {%- for check in task.complex_checks +%}
+            {%- if task.cis_section != 'Accounts' +%}
+            - name: {{ check.check_name }}
+              rule: {% if "'" in check.rule_check %}"{{ check.rule_check }}"{% else %}'{{ check.rule_check }}'{% endif %}
+          {%- endif +%}
+          {%- endfor +%}
+          {%- elif task.account_status is defined -%}
+          {%- for status in task.account_status +%}
+            - user: '{{ status.user }}'
+              rule: '{{ status.rule }}'
+          {%- endfor +%}
+          {%- elif task.registry_checks is defined -%}
+          {%- for reg_check in task.registry_checks +%}
+        - path: '{{ reg_check.registry_hive }}\{{ reg_check.registry_path }}'
+        - checks:
+          {%- if not reg_check.should_be_present +%}
+            - rule: 'should_not have_property "{{ reg_check.registry_value }}"'
+          {%- else +%}
+            - rule: 'should have_property "{{ reg_check.registry_value }}"'
+            - name: '{{ reg_check.registry_value }}'
+              rule: "should have_property_value('{{ reg_check.registry_value }}', {{ reg_check.registry_type | default(':dword') }}, '{{ reg_check.registry_data }}')"
+          {%- endif -%}
+          {%- endfor -%}          
+          {%- elif task.user_rights is defined -%}
+          {%- for user in task.user_rights +%}
+          - checks:
+            - name: {{ user.rights_name }}
+              rule: "{{ user.should_be }}"
+          {%- endfor +%}
+          {%- elif task.wmi_checks is defined -%}
+          {%- for wmi in task.wmi_checks +%}
+            - name: '{{ wmi.name }}'
+              rule: '{{ wmi.should_be }}'
+          {%- endfor +%}
+          {%- endif +%}
+{%+ endfor %}

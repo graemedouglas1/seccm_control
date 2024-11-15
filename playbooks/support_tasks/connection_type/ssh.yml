@@ -1,0 +1,55 @@
+---
+
+# =====================================================
+# SECTION: CONFIRM SSH VARS
+# =====================================================
+
+- name: Confirm Required Params
+  assert:
+    that: "{{ item.value.checks }}"
+    quiet: true
+    fail_msg: 'Parameter value not in expected state'
+    success_msg: 'Parameter value defined as expected'
+  loop: "{{ assert_checks | dict2items | selectattr('value.type', 'search', 'ssh') | list }}"
+  loop_control:
+    label: "Checking Parameter: {{ item.key }}"
+
+# Ensure directory exists
+- name: Ensure directory exists
+  file:
+    path: "{{ project_dir }}/keys"
+    state: directory
+
+# Download keys from Vault
+- name: Download Secret for SSH Connection
+  template:
+    src: "../templates/key.j2"
+    dest: "{{ project_dir }}/keys/{{ item.1.node }}"
+    mode: '0600'
+  loop: "{{ lookup('dict', device_list, wantlist=True) | subelements('value') }}"
+  loop_control:
+    label: "Downloading Key: {{ item.1.node }}"
+
+# Add node to inventory
+- name: Setup Inventory and Groups
+  ansible.builtin.add_host:
+    fqdn: "{{ item.1.node | lower() }}"
+    hostname: '{{ item.1.node | regex_search("^([a-zA-Z0-9-]+)") | lower }}'
+    ipaddress: '{{ item.1.ipaddress }}'
+    os_family: "{{ item.0.key | lower }}"
+    domain: '{{ item.1.node | regex_search("\.(\w+)\.", "\1") | first | lower }}'
+    domain_fqdn: '{{ item.1.node | regex_search("\w+\.(.*)", "\1") | first | lower }}'
+    assert_type: '{{ (tower_job_template_name | regex_search("^(?:[a-zA-Z]*)_(?:[a-zA-Z]*)_(?:[a-zA-Z]*)_(\w*)$", "\1") | first) | lower }}'
+    ansible_ssh_host: "{{ item.1.ipaddress | lower }}"
+    ansible_user: "{{ lookup('vault_lookup', 'path=wineng/data/accounts/ansible/local_admin, vault_key=username') }}"
+    ansible_ssh_private_key_file: "{{ project_dir + '/keys/' + item.1.node }}"
+    inventory_dir: "{{ inventory_dir }}"
+    ansible_shell_type: "{{ (item.0.key | lower == 'windows') | ternary('powershell', 'sh') }}"
+    ansible_connection: ssh
+    ansible_port: 22
+    groups:
+      - "{{ item.0.key | lower }}"
+      - "dynamic_list"
+  loop: "{{ lookup('dict', device_list, wantlist=True) | subelements('value') }}"
+  loop_control:
+    label: "Add Node: {{ item.1.node }}"

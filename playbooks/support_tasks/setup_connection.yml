@@ -1,0 +1,39 @@
+---
+
+- name: "Confirm 'target_hosts' variable passed in"
+  ansible.builtin.assert:
+    that:
+      - (target_hosts is defined)
+    fail_msg: "Variable 'target_hosts' not in expected state. Failed tests found.."
+    success_msg: "Variable 'target_hosts' in expected state."
+    quiet: true
+
+- name: Configure Inventory Block
+  block:
+
+    - name: Confirm Required Host Details
+      ansible.builtin.assert:
+        that:
+          - (device_list is defined) and
+            (device_list | type_debug == "dict") and
+            (device_list|count > 0)
+        fail_msg: "Variable 'device_list' not in expected state. Failed tests found.."
+        success_msg: "Variable 'device_list' in expected state."
+        quiet: true
+
+    - name: Configure Inventory
+      ansible.builtin.include_tasks: "{{ set_connection }}"
+
+  vars:
+    device_list: >-
+      {%- if target_hosts is defined and target_hosts is string -%}
+        {{ target_hosts.splitlines() | map('from_yaml')|list }}
+      {%- elif target_hosts is defined and target_hosts is iterable -%}
+        {{ target_hosts }}
+      {%- endif -%}
+    set_connection: >-
+      {%- if connection_type == 'ssh' -%}
+        "support_tasks/connection_type/ssh.yml"
+      {%- elif connection_type == 'psrp' -%}
+        "support_tasks/connection_type/psrp.yml"
+      {%- endif -%}

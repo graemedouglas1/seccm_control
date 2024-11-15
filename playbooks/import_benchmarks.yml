@@ -1,0 +1,76 @@
+---
+
+- name: Convert CIS Benchmarks
+  hosts: localhost
+  gather_facts: true
+  tasks:
+
+    # Run Assertions
+    - name: Run Mandatory Assertions
+      ansible.builtin.assert:
+        that:
+          - generator_type is defined and generator_type|length > 0
+          - roles_dir is defined and roles_dir|length > 0
+        quiet: true
+        fail_msg: 'Missing vars defined for play'
+        success_msg: 'All vars defined for play'
+
+    # Convert Benchmarks
+    - name: Convert CIS Benchmarks to InSpec
+      convert_benchmarks:
+        generator_type: "{{ generator_type }}"
+        input_dir: "/runner/requirements_roles/gcs_scm_benchmarks/files/benchmarks"
+        input_file: "{{ (input_file is defined) | ternary(input_file, omit) }}"
+        output_dir: '/tmp/inspec_benchmarks'
+      register: converted_benchmarks
+
+    # Show Stat Details
+    - name: "Confirm 'inspec_benchmark' directory not empty"
+      ansible.builtin.stat:
+        path: '/tmp/inspec_benchmarks'
+      register: benchmark_stats
+      failed_when:
+        - (not benchmark_stats.stat.exists) or (benchmark_stats.stat.size == 0)
+
+    # Download SSH Key from Vault
+    - name: Download Secret for SSH Connection to Git
+      ansible.builtin.template:
+        src: "{{ project_dir }}/templates/git_private.j2"
+        dest: "/tmp/git_private"
+        mode: '0600'
+
+    - name: Retrieve the Benchmarks Repo
+      ansible.builtin.git:
+        repo: git@bitbucket.org:togher1992/gcs_scm_benchmarks.git
+        dest: '/tmp/gcs_scm_benchmarks'
+        version: main
+        accept_hostkey: true
+        force: true
+        key_file: '/tmp/git_private'
+
+    - name: Copy InSpec Rulesets to Benchmarks Repo
+      ansible.posix.synchronize:
+        src: "/tmp/inspec_benchmarks/{{ item.value.baseline }}/{{ item.value.file_version }}"
+        dest: "/tmp/gcs_scm_benchmarks/hieradata/benchmarks/{{ item.value.baseline }}"
+        delete: true
+        recursive: true
+      loop: "{{ converted_benchmarks.result.baselines | dict2items }}"
+      loop_control:
+        label: "Copying Benchmark: {{ item.key }}"
+      register: benchmark_changes
+
+    - name: Identify new branch version
+      ansible.builtin.set_fact:
+        benchmark_branch_name: "{{ 'benchmarks_' + ('%Y%m%d%H%M%S' | strftime(ansible_date_time.epoch | int)) }}"
+      when: benchmark_changes.changed
+
+    - name: Publish Changes to Branch
+      git_actions:
+        url: git@bitbucket.org:togher1992/gcs_scm_benchmarks.git
+        path: '/tmp/gcs_scm_benchmarks'
+        scm_branch: "{{ benchmark_branch_name }}"
+        comment: "Adding benchmark updates"
+        ssh_params:
+          accept_hostkey: true
+          key_file: '/tmp/git_private'
+      when: benchmark_changes.changed

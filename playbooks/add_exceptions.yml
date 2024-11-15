@@ -1,0 +1,77 @@
+---
+- name: "Play : Upload Executions Data to Git"
+  hosts: localhost
+  vars:
+    exceptions_repo: "git@bitbucket.org:togher1992/gcs_scm_exceptions.git"
+    exceptions_version: "0"
+
+  tasks:
+
+    # Run Assertions
+    - name: Run Mandatory Assertions
+      ansible.builtin.assert:
+        that:
+          - exceptions is defined and exceptions|length > 0
+          - server_fqdn is defined and server_fqdn|length > 0
+          - baseline is defined and baseline|length >0
+        quiet: true
+        fail_msg: 'Missing vars defined for play'
+        success_msg: 'All vars defined for play'
+
+    # Download SSH Key from Vault
+    - name: Download Secret for SSH Connection to Git
+      ansible.builtin.template:
+        src: "{{ project_dir }}/templates/git_private.j2"
+        dest: "/tmp/git_private"
+        mode: '0600'
+
+    - name: Retrieve the Exceptions Repo
+      ansible.scm.git_retrieve:
+        timeout: 120
+        branch:
+          duplicate_detection: false
+          name: main
+        origin:
+          url: git@bitbucket.org:togher1992/gcs_scm_exceptions.git
+      register: repository
+
+    # - name: Checkout Benchmarks Module
+    #   ansible.builtin.git:
+    #     repo: 'git@bitbucket.org:togher1992/gcs_scm_exceptions.git'
+    #     dest: /tmp/exceptions
+    #     version: main
+    #     accept_hostkey: yes
+    #     key_file: "/tmp/git_private"
+
+    - name: Check if the Exceptions File exists
+      ansible.builtin.stat:
+        path: "{{ repository['path'] }}/hieradata/node/{{ server_fqdn | lower }}.yml"
+      register: existing_exceptions
+
+    - name: Read the Existing exceptions if they exist
+      ansible.builtin.slurp:
+        src: "{{ repository['path'] }}/hieradata/node/{{ server_fqdn | lower }}.yml"
+      register: exceptions_json
+      when: existing_exceptions.stat.exists
+
+    - name: Increment Exceptions Version Number (If Exceptions File already exists)
+      ansible.builtin.set_fact:
+        exceptions_version: "{{ (exceptions_json.content | b64decode | from_json).exceptions_version | default(0) | int + 1 }}"
+      when: existing_exceptions.stat.exists
+
+    - name: Add Exceptions Version to Exceptions Data
+      ansible.builtin.set_fact:
+        exceptions_data: "{{ combine({'exceptions_rules': exceptions}) | combine({'exceptions_version': exceptions_version}) }}"
+
+    - name: "Create or Update NodeFile for {{ server_fqdn | lower }}"
+      ansible.builtin.copy:
+        content: "{{ exceptions_data | trim + '\n' }}"
+        dest: "{{ repository['path'] }}/hieradata/node/{{ server_fqdn | lower }}.yml"
+        mode: '0644'
+
+    - name: Publish Repo
+      ansible.scm.git_publish:
+        commit:
+          message: "AWX Job ID : {{ awx_job_id }} : Add Node Exceptions for {{ server_fqdn | lower }}"
+        path: "{{ repository['path'] }}"
+        timeout: 120

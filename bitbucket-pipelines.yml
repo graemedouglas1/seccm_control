@@ -1,0 +1,16 @@
+# This is an example Starter pipeline configuration
+# Use a skeleton to build, test and deploy using manual and parallel steps
+# -----
+# You can specify a custom docker image from Docker Hub as your build environment.
+
+image: quay.io/togher1992/linting_ee:latest
+
+pipelines:
+  default:
+    - step:
+        name: 'Lint Ansible Code'
+        runs-on:
+          - 'self.hosted'
+        script:
+          - export ANSIBLE_CONFIG=./ansible.cfg
+          - ansible-lint -x role-name,yaml[line-length],var-naming[no-jinja],no-handler,key-order[task],jinja[spacing] --exclude results/

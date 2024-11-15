@@ -1,0 +1,3 @@
+---
+
+templates_destination: 'C:\ProgramData\Redhat\ansible\facts.d'

@@ -1,0 +1,46 @@
+---
+
+- name: Perform Tower Code Deployment
+  hosts: localhost
+  gather_facts: true
+  tasks:
+
+    # Run Assertions
+    - name: Run Mandatory Assertions
+      ansible.builtin.assert:
+        that:
+          - tower_instances is defined and tower_instances|length > 0
+        quiet: true
+        fail_msg: 'Missing vars defined for play'
+        success_msg: 'All vars defined for play'
+
+    # Gather in-scope Tower Host Details
+    - name: Identify Tower Host Details
+      ansible.builtin.set_fact:
+        target_hosts: >-
+          {%- set matched = [] -%}
+            {%- for t in tower_host -%}
+              {%- set instance = t | get_tower_env -%}
+              {%- set found = tower_instances | dict2items | selectattr('value.instance', 'defined') | selectattr('value.instance', 'regex', instance) -%}
+              {%- for f in found -%}
+                {%- if instance in f.value.instance -%}
+                  {%- do f.update({'apply_to': '{}'.format(instance)}) -%}
+                  {{ matched.append(f) }}
+                {%- endif -%}
+              {%- endfor -%}
+            {%- endfor -%}
+          {{ matched }}
+
+    # Deploy Branch
+    - name: Deploy Branch on Tower Instance
+      tower_code_deploy:
+        name: "{{ item.value.project_name }}"
+        organization: "{{ item.value.organization }}"
+        scm_branch: "{{ scm_branch | default(item.value.master_branch) | lower }}"
+        tower_host: "{{ item.value.tower_host }}"
+        master_branch: "{{ item.value.master_branch | lower }}"
+        tower_username: "{{ lookup('vault_lookup', 'path=wineng/data/accounts/ansible/{{ item.value.environment }}/api_account, vault_key=user') }}"
+        tower_password: "{{ lookup('vault_lookup', 'path=wineng/data/accounts/ansible/{{ item.value.environment }}/api_account, vault_key=password') }}"
+      loop: "{{ target_hosts }}"
+      loop_control:
+        label: "{{ item.value.tower_host }} : Deploying '{{ scm_branch | default(item.value.master_branch) | lower }}' Branch"

@@ -1,0 +1,23 @@
+collections:
+
+##############################################################
+# Section 1: Ansible Galaxy Modules
+##############################################################
+
+  - name: ansible.windows
+    version: 2.5.0
+  - name: azure.azcollection
+    version: 2.7.0
+  - name: chocolatey.chocolatey
+    version: 1.5.3
+  - name: community.crypto
+    version: 2.22.1
+  - name: community.general
+    version: 9.5.0
+  - name: community.vmware
+    version: 5.0.1
+  - name: community.windows
+    version: 2.3.0
+  - name: community.hashi_vault
+    version: 6.2.0
+  - name: ansible.scm

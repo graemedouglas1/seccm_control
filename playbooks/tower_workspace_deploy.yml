@@ -1,0 +1,246 @@
+---
+
+- name: Configure ADP Ansible Tower Workspace
+  hosts: localhost
+  gather_facts: true
+  tasks:
+
+    - name: Manage Tower Credentials Block
+      block:
+
+        # Run Assertions
+        - name: Run Mandatory Assertions
+          ansible.builtin.assert:
+            that:
+              - tower_credentials is defined and tower_credentials|length > 0
+            quiet: true
+            fail_msg: 'Missing vars defined for play'
+            success_msg: 'All vars defined for play'
+
+        # Identify Credentials
+        - name: Identify Credentials to Manage
+          ansible.builtin.set_fact:
+            filtered_creds: >-
+              {%- set matched = [] -%}
+                {%- for t in tower_host -%}
+                  {%- set instance = (t | get_tower_env) -%}
+                  {%- set found = tower_credentials | dict2items | selectattr('value.instance','defined') | selectattr('value.instance', 'regex', instance) -%}
+                  {%- for f in found -%}
+                    {%- if instance in f.value.instance -%}
+                      {%- do f.update({'apply_to':'{}'.format(instance)}) -%}
+                      {{ matched.append(f) }}
+                    {%- endif -%}
+                  {%- endfor -%}
+                {%- endfor -%}
+              {{ matched }}
+
+        # Manage Tower Credentials
+        - name: Manage Credentials
+          tower_manage_credentials:
+            credential_details: "{{ item.value }}"
+            organization: "{{ tower_instances[item.apply_to]['organization'] }}"
+            tower_prefix: "{{ tower_instances[item.apply_to]['tower_prefix'] }}"
+            tower_host: "{{ tower_instances[item.apply_to]['tower_host'] }}"
+            tower_username: "{{ lookup('vault_lookup', 'path=wineng/data/accounts/ansible/{{ tower_environment }}/api_account, vault_key=user') }}"
+            tower_password: "{{ lookup('vault_lookup', 'path=wineng/data/accounts/ansible/{{ tower_environment }}/api_account, vault_key=password') }}"
+          vars:
+            tower_environment: "{{ tower_instances[item.apply_to]['environment'] }}"
+          loop: "{{ filtered_creds }}"
+          loop_control:
+            label: "{{ tower_instances[item.apply_to]['tower_host'] }} -> Configuring Ansible Project: {{ item.value.name }}"
+
+      when:
+        - (deploy_credentials is defined) and (deploy_credentials|bool)
+
+    - name: Manage Projects Block
+      block:
+
+        # Run Assertions
+        - name: Run Mandatory Assertions
+          ansible.builtin.assert:
+            that:
+              - tower_projects is defined and tower_projects|length > 0
+            quiet: true
+            fail_msg: 'Missing vars defined for play'
+            success_msg: 'All vars defined for play'
+
+        # Identify Projects
+        - name: Identify Projects to Manage
+          ansible.builtin.set_fact:
+            filtered_tp: >-
+              {%- set matched = [] -%}
+                {%- for t in tower_host -%}
+                  {%- set instance = (t | get_tower_env) -%}
+                  {%- set found = tower_projects | dict2items | selectattr('value.instance','defined') | selectattr('value.instance', 'regex', instance) -%}
+                  {%- for f in found -%}
+                    {%- if instance in f.value.instance -%}
+                      {%- do f.update({'apply_to':'{}'.format(instance)}) -%}
+                      {{ matched.append(f) }}
+                    {%- endif -%}
+                  {%- endfor -%}
+                {%- endfor -%}
+              {{ matched }}
+
+        # Manage Tower Projects
+        - name: Manage Projects
+          tower_manage_projects:
+            project_details: "{{ item.value }}"
+            organization: "{{ tower_instances[item.apply_to]['organization'] }}"
+            tower_prefix: "{{ tower_instances[item.apply_to]['tower_prefix'] }}"
+            tower_host: "{{ tower_instances[item.apply_to]['tower_host'] }}"
+            tower_username: "{{ lookup('vault_lookup', 'path=wineng/data/accounts/ansible/{{ tower_environment }}/api_account, vault_key=user') }}"
+            tower_password: "{{ lookup('vault_lookup', 'path=wineng/data/accounts/ansible/{{ tower_environment }}/api_account, vault_key=password') }}"
+          vars:
+            tower_environment: "{{ tower_instances[item.apply_to]['environment'] }}"
+          loop: "{{ filtered_tp }}"
+          loop_control:
+            label: "{{ tower_instances[item.apply_to]['tower_host'] }} -> Configuring Ansible Project: {{ item.value.name }}"
+
+      when:
+        - (deploy_projects is defined) and (deploy_projects|bool)
+
+    - name: Inventories Block
+      block:
+
+        # Run Assertions
+        - name: Run Mandatory Assertions
+          ansible.builtin.assert:
+            that:
+              - inventories is defined and inventories|length > 0
+            quiet: true
+            fail_msg: 'Missing vars defined for play'
+            success_msg: 'All vars defined for play'
+
+        # Identify Inventories
+        - name: Identify Inventories to Manage
+          ansible.builtin.set_fact:
+            filtered_inv: >-
+              {%- set matched = [] -%}
+                {%- for t in tower_host -%}
+                  {%- set instance = (t | get_tower_env) -%}
+                  {%- set found = inventories | dict2items | selectattr('value.instance','defined') | selectattr('value.instance', 'regex', instance) -%}
+                  {%- for f in found -%}
+                    {%- if instance in f.value.instance -%}
+                      {%- do f.update({'apply_to':'{}'.format(instance)}) -%}
+                      {{ matched.append(f) }}
+                    {%- endif -%}
+                  {%- endfor -%}
+                {%- endfor -%}
+              {{ matched }}
+
+        # Manage Tower Inventories
+        - name: Manage Inventories
+          tower_manage_inventories:
+            inventory_details: "{{ item.value }}"
+            inventory_sources: "{{ inventory_sources }}"
+            organization: "{{ tower_instances[item.apply_to]['organization'] }}"
+            tower_prefix: "{{ tower_instances[item.apply_to]['tower_prefix'] }}"
+            tower_instance: "{{ item.apply_to }}"
+            tower_host: "{{ tower_instances[item.apply_to]['tower_host'] }}"
+            tower_username: "{{ lookup('vault_lookup', 'path=wineng/data/accounts/ansible/{{ tower_environment }}/api_account, vault_key=user') }}"
+            tower_password: "{{ lookup('vault_lookup', 'path=wineng/data/accounts/ansible/{{ tower_environment }}/api_account, vault_key=password') }}"
+          vars:
+            tower_environment: "{{ tower_instances[item.apply_to]['environment'] }}"
+          loop: "{{ filtered_inv }}"
+          loop_control:
+            label: "{{ tower_instances[item.apply_to]['tower_host'] }} -> Configuring Ansible Project: {{ item.value.name }}"
+
+      when:
+        - (deploy_inventories is defined) and (deploy_inventories|bool)
+
+    - name: Job Templates Block
+      block:
+
+        # Run Assertions
+        - name: Run Mandatory Assertions
+          ansible.builtin.assert:
+            that:
+              - job_templates is defined and job_templates|length > 0
+            quiet: true
+            fail_msg: 'Missing vars defined for play'
+            success_msg: 'All vars defined for play'
+
+        # Identify Templates
+        - name: Identify Job Templates to Manage
+          ansible.builtin.set_fact:
+            filtered_jt: >-
+              {%- set matched = [] -%}
+                {%- for t in tower_host -%}
+                  {%- set instance = (t | get_tower_env) -%}
+                  {%- set found = job_templates | dict2items | selectattr('value.instance','defined') | selectattr('value.instance', 'regex', instance) -%}
+                  {%- for f in found -%}
+                    {%- if instance in f.value.instance -%}
+                      {%- do f.update({'apply_to':'{}'.format(instance)}) -%}
+                      {{ matched.append(f) }}
+                    {%- endif -%}
+                  {%- endfor -%}
+                {%- endfor -%}
+              {{ matched }}
+
+        # Manage Tower Templates
+        - name: Manage Job Templates
+          tower_manage_templates:
+            template_details: "{{ item.value }}"
+            organization: "{{ tower_instances[item.apply_to]['organization'] }}"
+            project_name: "{{ tower_instances[item.apply_to]['project_name'] }}"
+            tower_host: "{{ tower_instances[item.apply_to]['tower_host'] }}"
+            tower_prefix: "{{ tower_instances[item.apply_to]['tower_prefix'] }}"
+            tower_username: "{{ lookup('vault_lookup', 'path=wineng/data/accounts/ansible/{{ tower_environment }}/api_account, vault_key=user') }}"
+            tower_password: "{{ lookup('vault_lookup', 'path=wineng/data/accounts/ansible/{{ tower_environment }}/api_account, vault_key=password') }}"
+          vars:
+            tower_environment: "{{ tower_instances[item.apply_to]['environment'] }}"
+          loop: "{{ filtered_jt }}"
+          loop_control:
+            label: "{{ tower_instances[item.apply_to]['tower_host'] }} -> Configuring Ansible Template: {{ item.value.name }}"
+
+      when:
+        - (deploy_templates is defined) and (deploy_templates|bool) or
+          (deploy_workflows is defined) and (deploy_workflows|bool)
+
+    - name: Workflows Block
+      block:
+
+        # Run Assertions
+        - name: Run Mandatory Assertions
+          ansible.builtin.assert:
+            that:
+              - workflow_templates is defined and workflow_templates|length > 0
+            quiet: true
+            fail_msg: 'Missing vars defined for play'
+            success_msg: 'All vars defined for play'
+
+        # Identify Workflows
+        - name: Identify Workflows to Manage
+          ansible.builtin.set_fact:
+            filtered_wft: >-
+              {%- set matched = [] -%}
+                {%- for t in tower_host -%}
+                  {%- set instance = (t | get_tower_env) -%}
+                  {%- set found = workflow_templates | dict2items | selectattr('value.instance','defined') | selectattr('value.instance', 'regex', instance) -%}
+                  {%- for f in found -%}
+                    {%- if instance in f.value.instance -%}
+                      {%- do f.update({'apply_to':'{}'.format(instance)}) -%}
+                      {{ matched.append(f) }}
+                    {%- endif -%}
+                  {%- endfor -%}
+                {%- endfor -%}
+              {{ matched }}
+
+        # Manage Tower Workflows
+        - name: Manage Workflows
+          tower_manage_workflows:
+            workflow_details: "{{ item.value }}"
+            organization: "{{ tower_instances[item.apply_to]['organization'] }}"
+            project_name: "{{ tower_instances[item.apply_to]['project_name'] }}"
+            tower_host: "{{ tower_instances[item.apply_to]['tower_host'] }}"
+            tower_prefix: "{{ tower_instances[item.apply_to]['tower_prefix'] }}"
+            tower_username: "{{ lookup('vault_lookup', 'path=wineng/data/accounts/ansible/{{ tower_environment }}/api_account, vault_key=user') }}"
+            tower_password: "{{ lookup('vault_lookup', 'path=wineng/data/accounts/ansible/{{ tower_environment }}/api_account, vault_key=password') }}"
+          vars:
+            tower_environment: "{{ tower_instances[item.apply_to]['environment'] }}"
+          loop: "{{ filtered_wft }}"
+          loop_control:
+            label: "{{ tower_instances[item.apply_to]['tower_host'] }} -> Configuring Ansible Workflow: {{ item.value.name }}"
+
+      when:
+        - (deploy_workflows is defined) and (deploy_workflows|bool)
